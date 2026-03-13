@@ -1,6 +1,6 @@
 (async function() {
     const TOTAL_RUN_TIME = 8 * 60 * 60 * 1000;
-    const INTERVAL_WAIT = 30 * 60 * 1000;
+    const INTERVAL_WAIT = 5 * 60 * 1000;
     const startTime = Date.now();
     let cycleCount = 0;
     let lastMatrixData = { quick: [], schedule: [] };
