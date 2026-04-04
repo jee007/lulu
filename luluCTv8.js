@@ -1,7 +1,7 @@
 javascript:(async function() {
     const API_URL = "https://script.google.com/macros/s/AKfycbxq26ohowEP2C4H1Z9CvevqAFiK2oG-viK75f7tGQPN6oucP0V8-rNNL3rRRBq0kMha/exec";
-    const TOTAL_RUN_TIME = 8 * 60 * 60 * 1000;
-    const INTERVAL_WAIT = 1 * 60 * 1000; 
+    const TOTAL_RUN_TIME = 18 * 60 * 60 * 1000;
+    const INTERVAL_WAIT = 10 * 60 * 1000; 
     const startTime = Date.now();
     let cycleCount = 0;
     let lastMatrixData = { quick: [], schedule: [] };
