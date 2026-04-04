@@ -1,4 +1,5 @@
-(async function() {
+javascript:(async function() {
+    const API_URL = "https://script.google.com/macros/s/AKfycbzgGSnHXVhqi2SJAXasJ74XwYplecKEaF8CeGbBA1zXxyanD8cEF0z937qN2Pe_7o6w/exec";
     const TOTAL_RUN_TIME = 8 * 60 * 60 * 1000;
     const INTERVAL_WAIT = 1 * 60 * 1000; 
     const startTime = Date.now();
@@ -12,7 +13,7 @@
     const STATUSES = ["Created", "Picking with packing", "Picking with unassigned zone", "Parking", "Auditing", "Stored", "Going to Origin", "Transferring", "Going to destination", "In Route", "Delivering"];
 
     const ui = document.createElement('div');
-    ui.style = 'position:fixed; top:10px; right:10px; z-index:9999; background:rgba(0,0,0,0.95); color:white; padding:15px; border-radius:8px; font-family:sans-serif; border:1px solid #4CAF50; width:200px;';
+    ui.style = 'position:fixed; top:10px; right:10px; z-index:9999; background:rgba(0,0,0,0.95); color:white; padding:15px; border-radius:8px; font-family:sans-serif; border:1px solid #4CAF50; width:200px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);';
     document.body.appendChild(ui);
 
     const updateUI = (status, nextRun = null) => {
@@ -20,31 +21,21 @@
         const btnColor = isWorking ? "#FF9800" : "#2196F3";
 
         ui.innerHTML = `
-            <h4 style="margin:0; color:#4CAF50;">🟢 Lulu Matrix Pro</h4>
+            <h4 style="margin:0; color:#4CAF50;">🟢 Lulu Matrix Sync</h4>
             <div style="font-size:12px; margin:5px 0;">Cycle: ${cycleCount} | ${status}</div>
-            <button id="view-matrix-btn" style="width:100%; background:#4CAF50; color:white; border:none; padding:8px; cursor:pointer; font-weight:bold; border-radius:4px; margin-bottom:5px;">📊 Open Dashboard</button>
             <button id="refresh-now-btn" style="width:100%; background:${btnColor}; color:white; border:none; padding:8px; cursor:pointer; font-weight:bold; border-radius:4px; transition: background 0.3s;">${btnText}</button>
             <div style="font-size:10px; color:#aaa; margin-top:5px;">Next Auto: ${nextRun ? nextRun.toLocaleTimeString() : '--:--'}</div>
         `;
-        document.getElementById('view-matrix-btn').onclick = showMatrixWindow;
         document.getElementById('refresh-now-btn').onclick = () => { 
             if (!isWorking) forceRefresh = true; 
         };
     };
 
-    // NEW: Function to force the website to reload its data grid without killing the script
     const softRefresh = async () => {
         updateUI("🔄 Resetting View...");
         const firstPageBtn = document.querySelector('.ant-pagination-item-1');
-        const refreshBtn = document.querySelector('.anticon-reload')?.parentElement; // Tries to find a reload icon button if it exists
-
-        if (refreshBtn) {
-            refreshBtn.click();
-        } else if (firstPageBtn) {
-            firstPageBtn.click();
-        }
-        
-        // Wait 5 seconds for the network request to finish and DOM to update
+        const refreshBtn = document.querySelector('.anticon-reload')?.parentElement;
+        if (refreshBtn) refreshBtn.click(); else if (firstPageBtn) firstPageBtn.click();
         await new Promise(r => setTimeout(r, 5000));
     };
 
@@ -85,44 +76,9 @@
         return { quick, schedule };
     };
 
-    const generateTable = (title, headers, data, keyField, themeColor) => {
-        let html = `<h3 style="background:${themeColor}; color:white; padding:8px; margin-bottom:0;">${title}</h3>`;
-        html += `<table><thead><tr><th>Status</th>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>`;
-        STATUSES.forEach(stat => {
-            html += `<tr><td style="text-align:left; font-weight:bold;">${stat}</td>`;
-            headers.forEach(h => {
-                const matches = data.filter(d => d.status.toLowerCase() === stat.toLowerCase() && d[keyField] === h);
-                const count = matches.length;
-                const hoverText = matches.map(m => `${m.orderID} (${m.storeID})`).join('\n');
-                const copyText = matches.map(m => m.orderID).join('\n');
-                const cellColor = count > 0 ? (themeColor === '#ba0000' ? '#fff0f0' : '#f0fff4') : 'transparent';
-                html += `<td title="${hoverText}" onclick="if(${count}>0) { navigator.clipboard.writeText(\`${copyText}\`); alert('Copied ${count} Order IDs'); }" style="background:${cellColor}; color:${count > 0 ? '#000' : '#ccc'}; cursor:${count > 0 ? 'pointer' : 'default'};">${count > 0 ? count : '-'}</td>`;
-            });
-            html += `</tr>`;
-        });
-        return html + `</tbody></table>`;
-    };
-
-    const showMatrixWindow = () => {
-        const win = window.open("", "LuluMatrix", "width=1300,height=900");
-        const quickStores = [...new Set(lastMatrixData.quick.map(d => d.storeID))].sort();
-        const scheduleStores = [...new Set(lastMatrixData.schedule.map(d => d.schedule ? d.storeID : null).filter(Boolean))].sort();
-        win.document.body.innerHTML = `
-            <style>body { font-family: sans-serif; padding: 20px; background: #f8f9fa; } table { border-collapse: collapse; width: 100%; margin-bottom: 40px; background: white; font-size: 11px; } th { background: #444; color: white; padding: 10px; border: 1px solid #ddd; } td { border: 1px solid #ddd; padding: 8px; text-align: center; transition: 0.2s; } td:hover { filter: brightness(0.9); }</style>
-            <h2>Jeddah Matrix - Cycle ${cycleCount} (${new Date().toLocaleTimeString()})</h2>
-            ${generateTable("Quick Commerce Hourly View", AGE_BUCKETS, lastMatrixData.quick, "bucket", "#ba0000")}
-            ${generateTable("Quick Commerce Store Wise View", quickStores, lastMatrixData.quick, "storeID", "#ba0000")}
-            ${generateTable("Schedule Commerce Hourly View", SLOTS, lastMatrixData.schedule, "slot", "#2e7d32")}
-            ${generateTable("Schedule Delivery Store Wise View", scheduleStores, lastMatrixData.schedule, "storeID", "#2e7d32")}
-        `;
-    };
-
     while (Date.now() - startTime < TOTAL_RUN_TIME) {
         isWorking = true; 
-        
-        // --- STEP 1: REFRESH DATA ---
         await softRefresh();
-        
         updateUI("🚀 Scraping...");
         let rawData = [];
         const headers = ["Reference", "Creation", "Client", "Resources", "Payment Method", "Delivery", "Picking Progress", "Status"];
@@ -147,8 +103,22 @@
         }
 
         lastMatrixData = processToMatrix(rawData);
-        cycleCount++;
         
+        // --- SYNC TO BACKEND ---
+        updateUI("☁️ Syncing to Cloud...");
+        try {
+            await fetch(API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: new URLSearchParams({
+                    action: 'uploadMatrixData',
+                    data: JSON.stringify(lastMatrixData)
+                })
+            });
+            console.log("Matrix synced!");
+        } catch (e) { console.error("Sync failed", e); }
+
+        cycleCount++;
         isWorking = false; 
         forceRefresh = false; 
         
