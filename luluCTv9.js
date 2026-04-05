@@ -112,6 +112,7 @@ javascript:(async function() {
                 mode: 'no-cors',
                 body: new URLSearchParams({
                     action: 'uploadMatrixData',
+                    timestamp: new Date().toISOString(),
                     data: JSON.stringify(lastMatrixData)
                 })
             });
