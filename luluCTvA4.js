@@ -1,5 +1,5 @@
 javascript:(async function() {
-    const API_URL = "https://script.google.com/macros/s/AKfycbw0IP4u5pP1RgrzzlDkgSlHgBU-YjDMSY5rAdBaArBTwG0DIeXr-GqclEgJ_RdtsM0/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbym9GP8SjMCgi23bsgU1Ex-Q08iczLyRwqnKJJl9P-2TEHCCv5H4tOy-Vr7XFUWneMJ/exec";
     const TOTAL_RUN_TIME = 18 * 60 * 60 * 1000;
     const INTERVAL_WAIT = 10 * 60 * 1000;
     const startTime = Date.now();
