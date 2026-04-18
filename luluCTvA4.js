@@ -1,5 +1,5 @@
 javascript:(async function() {
-    const API_URL = "https://script.google.com/macros/s/AKfycbwS5jcb1Q2NA-HkXJwKu6FBW_XjIsgRNUDuhrdtKhe5T-c94mSDRpJiDYNwztHbDFT9/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbxSxv9EPpd_KxNNThhUDyocY_38QE1JlfGWK-h2vKXjRpoxUXa9XTPP6eM77pcTSE4/exec";
     const TOTAL_RUN_TIME = 18 * 60 * 60 * 1000;
     const INTERVAL_WAIT = 10 * 60 * 1000;
     const startTime = Date.now();
@@ -89,22 +89,55 @@ javascript:(async function() {
     };
 
     // ============================================================
-    // CHANGE 1 of 1 (Scraper) — NEW chunked upload helper.
+    // CHANGE 1 of 2 (Scraper) — XHR wrapper to bypass fetch interceptor.
+    //
+    // ROOT CAUSE OF THE NEW ERROR:
+    //   The WMS website installs a fetch interceptor (fetch-intercept.ts)
+    //   that monkey-patches window.fetch. When our no-cors response
+    //   arrives, its url property is '' (empty — all opaque responses
+    //   are like this). The interceptor's response handler calls
+    //   new URL('') which throws "Failed to construct 'URL': Invalid URL".
+    //   That error bubbles up as a fetch failure even though the request
+    //   was sent and GAS received it fine.
+    //
+    // FIX:
+    //   XMLHttpRequest is a completely separate browser API that the
+    //   fetch interceptor cannot touch. Switching to XHR for the chunk
+    //   sends bypasses the interceptor entirely. The payload format
+    //   (application/x-www-form-urlencoded) is identical — only the
+    //   sending mechanism changes.
+    // ============================================================
+    const sendChunkXHR = (url, params) => {
+        // Returns a Promise<boolean>: true = XHR completed (any HTTP
+        // status), false = network-level failure or timeout.
+        // We treat any completion as success because we cannot read the
+        // GAS response body (same limitation as no-cors fetch), and a
+        // completed XHR means the request was delivered.
+        return new Promise((resolve) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', url, true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            xhr.timeout   = 30000;           // 30 s — GAS can be slow under load
+            xhr.onloadend = () => resolve(true);
+            xhr.onerror   = () => resolve(false);
+            xhr.ontimeout = () => resolve(false);
+            xhr.send(params.toString());
+        });
+    };
+    // ============================================================ END CHANGE 1
+
+    // ============================================================
+    // CHANGE 2 of 2 (Scraper) — chunked upload helper (same as before
+    // except the inner send now calls sendChunkXHR instead of fetch).
     //
     // OLD CODE (single large POST — fails at 80 pages):
     //   await fetch(API_URL, {
     //     method: 'POST', mode: 'no-cors',
-    //     body: new URLSearchParams({
-    //       action: 'uploadMatrixData',
-    //       timestamp: new Date().toISOString(),
-    //       data: JSON.stringify(lastMatrixData)   // entire payload at once
-    //     })
+    //     body: new URLSearchParams({ action, timestamp, data })
     //   });
     //
-    // NEW CODE: splits the JSON string into CHUNK_SIZE pieces,
-    // sends them one at a time with awaited fetches and a delay
-    // between each. Each chunk goes to GAS with chunkIndex and
-    // totalChunks so the backend can reassemble them in order.
+    // NEW CODE: splits the JSON string into CHUNK_SIZE pieces and
+    // sends each one via XHR (bypassing the fetch interceptor).
     // ============================================================
     const uploadInChunks = async (matrixData) => {
         const jsonStr     = JSON.stringify(matrixData);
@@ -116,38 +149,36 @@ javascript:(async function() {
         for (let i = 0; i < totalChunks; i++) {
             const chunk = jsonStr.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
 
-            // Update UI so the user can see progress per chunk
             updateUI(`☁️ Uploading chunk ${i + 1}/${totalChunks}...`);
+
+            const params = new URLSearchParams({
+                action:      'uploadMatrixData',
+                chunkIndex:  String(i),
+                totalChunks: String(totalChunks),
+                timestamp:   ts,
+                data:        chunk
+            });
 
             let sent     = false;
             let attempts = 0;
 
             while (!sent && attempts < CHUNK_RETRIES) {
-                try {
-                    await fetch(API_URL, {
-                        method: 'POST',
-                        mode:   'no-cors',
-                        body:   new URLSearchParams({
-                            action:      'uploadMatrixData',
-                            chunkIndex:  String(i),
-                            totalChunks: String(totalChunks),
-                            timestamp:   ts,
-                            data:        chunk
-                        })
-                    });
-                    sent = true;
-                    console.log(`[Matrix] Chunk ${i + 1}/${totalChunks} sent.`);
-                } catch (err) {
+                // ── CHANGED: sendChunkXHR instead of fetch() ──
+                sent = await sendChunkXHR(API_URL, params);
+                // ── END CHANGE ────────────────────────────────
+                if (!sent) {
                     attempts++;
-                    console.warn(`[Matrix] Chunk ${i + 1} attempt ${attempts} failed. Retrying in ${attempts * 2}s…`, err);
+                    console.warn(`[Matrix] Chunk ${i + 1} attempt ${attempts} failed. Retrying in ${attempts * 2}s…`);
                     await new Promise(r => setTimeout(r, attempts * 2000));
                 }
             }
 
             if (!sent) {
                 console.error(`[Matrix] Chunk ${i + 1} failed after ${CHUNK_RETRIES} attempts. Upload aborted.`);
-                return false;  // signal failure to caller
+                return false;
             }
+
+            console.log(`[Matrix] Chunk ${i + 1}/${totalChunks} sent.`);
 
             // Wait between chunks so GAS has time to release its
             // LockService lock before the next request arrives.
@@ -156,14 +187,13 @@ javascript:(async function() {
             }
         }
 
-        // Small extra wait after the last chunk to give GAS time
-        // to finish the merge before the next read cycle.
+        // Extra wait after the last chunk to let GAS finish the merge.
         await new Promise(r => setTimeout(r, 2000));
 
         console.log(`[Matrix] All ${totalChunks} chunk(s) sent. Sync complete.`);
         return true;
     };
-    // ============================================================ END CHANGE
+    // ============================================================ END CHANGE 2
 
     while (Date.now() - startTime < TOTAL_RUN_TIME) {
         isWorking = true;
